@@ -1,4 +1,4 @@
-# Currency Bot
+# Currency Bot [![License](https://img.shields.io/github/license/Kirdow/CurrencyBot.svg)](https://github.com/Kirdow/CurrencyBot/blob/master/LICENSE)
 Bot made by Kirdow to convert currency from A to B
 
 # Supported Messages (As of writing)

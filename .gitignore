@@ -1,0 +1,23 @@
+# logs
+logs
+*.log
+
+# Swap files
+*.swp
+
+# Directories
+node_modules/
+
+# Files
+package-lock.json
+
+# Token files
+*token.txt
+*client[Ii][Dd].txt
+*client.txt
+
+# dotenv
+.env
+
+# Tank files
+**.tank.json

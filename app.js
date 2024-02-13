@@ -54,7 +54,15 @@ async function onMessage(message) {
         })
     };
 
-    await handleCommand({ content: message.content, reply })
+    if (await handleCommand({ content: message.content, reply })) {
+        const user = message.author
+        let username = `${user.username}`
+        if (user.discriminator !== '0') {
+            username += `#${user.discriminator}`
+        }
+
+        console.log(`message prompt:${message.content} by ${username}`)
+    }
 }
 
 async function handleCommand(opts) {
@@ -223,17 +231,32 @@ async function interactionResponse(interaction) {
                         .setURL("https://github.com/Kirdow/CurrencyBot")
                         .addFields(
                             { name: 'Author', value: 'Kirdow', inline: true },
-                            { name: 'Repository', value: '[Kirdow/CurrencyBot](https://github.com/Kirdow/CurrencyBot)', inline: true }
+                            { name: 'Repository', value: '[GitHub](https://github.com/Kirdow/CurrencyBot)', inline: true }
                         )
                         .setTimestamp(new Date())
                         .setFooter({ text: cbot.user.username, iconURL: getBotAvatarUrl() })
                 ]
             }
 
+
+            const user = interaction.user
+            let username = `${user.username}`
+            if (user.discriminator !== '0') {
+                username += `#${user.discriminator}`
+            }
+
+            console.log(`/source by ${username}`)
             await interaction.reply(messageContent)
         } else if (interaction.commandName === 'currency') {
-            const content = interaction.options.getString('prompt')
+            const user = interaction.user
+            let username = `${user.username}`
+            if (user.discriminator !== '0') {
+                username += `#${user.discriminator}`
+            }
+
+            let content = interaction.options.getString('prompt')
             if (!content) {
+                console.log(`/currency by ${username} | No prompt specified`)
                 await interaction.reply({
                     content: '# Usage\nAll of these require the `prompt` option for `/currency`\n### Conversion Prompt\n```\n<decimal> <from>\n```\nor\n```\n<decimal> <from> <to>\n```\n### Scheme Prompt\n```\n$<code>\n```',
                     ephemeral: true
@@ -246,11 +269,23 @@ async function interactionResponse(interaction) {
                 })
             }
 
-            await interaction.reply({
-                content: `Processing...`
-            })
+            let silent = false
+            if (content.startsWith('@silent ')) {
+                await interaction.reply({
+                    content: `Processing...`,
+                    ephemeral: true
+                })
+                content = content.substr(8)
+                silent = true
+            } else {
+                await interaction.reply({
+                    content: `Processing...`
+                })
+            }
 
+            console.log(`/currency prompt:${content} by ${username} | silent: ${silent}`)
             if (!await handleCommand({ content, reply, embed: true })) {
+                console.warn(`Something went wrong with the request.`)
                 await interaction.editReply({
                     content: `Something went wrong with the request.`
                 })

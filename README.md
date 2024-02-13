@@ -52,8 +52,9 @@ KillSignal=SIGINT
 [Install]
 WantedBy=multi-user.target
 ```
-On Ubuntu, save this to ``/etc/systemd/system/currencybot.service``, then run the following to reload the daemon configs (you will need to reload daemon configs always when editing .service files):
+On Ubuntu, save this to ``/etc/systemd/system/currencybot.service``, then run the following to reload the daemon configs:
 ```sh
+# You will need to reload daemon configs every time you edit a .service file
 $ sudo systemctl daemon-reload
 ```
 
@@ -61,8 +62,10 @@ To manage the bot state, run one of the following
 ```sh
 # Start/Stop/Restart the bot
 $ sudo systemctl <start|stop|restart> currencybot
+
 # Enable/Disable auto start on system boot
 $ sudo systemctl <enable|disable> currencybot
+
 # Check the status of the bot
 $ sudo systemctl status currencybot
 ```
@@ -72,6 +75,7 @@ To check the logs, run one of the following
 # Check the logs from the moment the bot service was created.
 # Note: You can skip to latest by pressing G (capital g).
 $ sudo journalctl -u currencybot
+
 # Tail the logs, automatically polling for the latest output.
 $ sudo journalctl -u currencybot -f
 ```

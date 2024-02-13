@@ -1,6 +1,9 @@
-import { GatewayIntentBits, Partials } from 'discord.js'
+import { EmbedBuilder, GatewayIntentBits, Partials } from 'discord.js'
 import { createBot } from './dbot.js'
 import { getLatest } from './currencyapi.js'
+
+import SourceCommand from './cmd/source.js'
+import CurrencyCommand from './cmd/currency.js'
 
 const cache = {}
 
@@ -44,17 +47,30 @@ async function onMessage(message) {
         return;
     }
 
-    if (await onConvert(message)) {
-        return;
-    }
+    const reply = async (data) => {
+        return await message.channel.send({
+            ...data,
+            allowedMentions: { repliedUser: false }
+        })
+    };
 
-    if (await onScheme(message)) {
-        return;
-    }
+    await handleCommand({ content: message.content, reply })
 }
 
-async function onConvert(message) {
-    const groups = message.content.match(convertRegex)?.groups
+async function handleCommand(opts) {
+    if (await onConvert(opts)) {
+        return true;
+    }
+
+    if (await onScheme(opts)) {
+        return true;
+    }
+
+    return false;
+}
+
+async function onConvert({ content, reply, embed }) {
+    const groups = content.match(convertRegex)?.groups
     if (!groups) {
         return false;
     }
@@ -85,10 +101,28 @@ async function onConvert(message) {
             result = value
         }
 
-        await message.reply({
-            content: `${result} ${to} (${delta})`,
-            allowedMentions: { repliedUser: false }
-        })
+        if (embed) {
+            const embeds = [
+                new EmbedBuilder()
+                    .setColor(0xA0FF00)
+                    .setTitle(`Conversion for ${curr} to ${to}`)
+                    .addFields(
+                        { name: `${curr}`, value: `${val}`, inline: true },
+                        { name: `${to}`, value: `${result}`, inline: true }
+                    )
+                    .setTimestamp(getCurrencyDate())
+                    .setFooter({ text: cbot.user.username, iconURL: getBotAvatarUrl() })
+            ]
+
+            await reply({
+                content: '',
+                embeds
+            })
+        } else {
+            await reply({
+                content: `${result} ${to} (${delta})`
+            })
+        }
     } catch (ex) {
         console.error("Failed to fetch currency")
         console.error(ex)
@@ -97,8 +131,8 @@ async function onConvert(message) {
     return true
 }
 
-async function onScheme(message) {
-    const groups = message.content.match(schemeRegex)?.groups
+async function onScheme({ content, reply, embed }) {
+    const groups = content.match(schemeRegex)?.groups
     if (!groups) {
         return false;
     }
@@ -131,16 +165,101 @@ async function onScheme(message) {
         const top = `100 ${code} = ${currToEur} EUR`
         const bottom = `100 EUR = ${eurToCurr} ${code}`
 
-        await message.reply({
-            content: `${top}\n${bottom}`,
-            allowedMentions: { repliedUser: false }
-        })
+        if (embed) {
+            const embeds = [
+                new EmbedBuilder()
+                    .setColor(0xA0FF00)
+                    .setTitle(`${code} <=> EUR`)
+                    .addFields(
+                        { name: `100 EUR`, value: `${eurToCurr} ${code}`, inline: true },
+                        { name: `100 ${code}`, value: `${currToEur} EUR`, inline: true }
+                    )
+                    .setTimestamp(getCurrencyDate())
+                    .setFooter({ text: cbot.user.username, iconURL: getBotAvatarUrl() })
+            ]
+
+            await reply({
+                content: '',
+                embeds
+            })
+        } else {
+            await reply({
+                content: `${top}\n${bottom}`
+            })
+        }
     } catch (ex) {
         console.error("Failed to fetch scheme currency")
         console.error(ex)
     }
 
     return true
+}
+
+function getBotAvatarUrl() {
+    return `https://cdn.discordapp.com/avatars/${cbot.user.id}/${cbot.user.avatar}.png`
+}
+
+function getCurrencyDate() {
+    const date = new Date()
+    if (date.getUTCHours() < 5.0) {
+        date.setUTCDate(date.getUTCDate()-1)
+    }
+
+    date.setUTCHours(5, 0, 0, 0)
+    return date
+}
+
+async function interactionResponse(interaction) {
+    if (!interaction.isChatInputCommand()) return
+
+    try {
+        if (interaction.commandName === 'source') {
+            const messageContent = {
+                content: '',
+                embeds: [
+                    new EmbedBuilder()
+                        .setColor(0xAFFF00)
+                        .setTitle("Currency Bot Source")
+                        .setURL("https://github.com/Kirdow/CurrencyBot")
+                        .addFields(
+                            { name: 'Author', value: 'Kirdow', inline: true },
+                            { name: 'Repository', value: '[Kirdow/CurrencyBot](https://github.com/Kirdow/CurrencyBot)', inline: true }
+                        )
+                        .setTimestamp(new Date())
+                        .setFooter({ text: cbot.user.username, iconURL: getBotAvatarUrl() })
+                ]
+            }
+
+            await interaction.reply(messageContent)
+        } else if (interaction.commandName === 'currency') {
+            const content = interaction.options.getString('prompt')
+            if (!content) {
+                await interaction.reply({
+                    content: '# Usage\nAll of these require the `prompt` option for `/currency`\n### Conversion Prompt\n```\n<decimal> <from>\n```\nor\n```\n<decimal> <from> <to>\n```\n### Scheme Prompt\n```\n$<code>\n```',
+                    ephemeral: true
+                })
+                return;
+            }
+            const reply = async (data) => {
+                return await interaction.editReply({
+                    ...data
+                })
+            }
+
+            await interaction.reply({
+                content: `Processing...`
+            })
+
+            if (!await handleCommand({ content, reply, embed: true })) {
+                await interaction.editReply({
+                    content: `Something went wrong with the request.`
+                })
+            }
+        }
+    } catch (ex) {
+        console.error("Interaction failed")
+        console.error(ex)
+    }
 }
 
 const cbot = createBot({
@@ -150,7 +269,12 @@ const cbot = createBot({
     ready: client => {
         console.log(`Logged in as ${client.user.tag}`)
     },
+    commands: [
+        SourceCommand,
+        CurrencyCommand
+    ],
     eventsCallback: client => {
+        client.on('interactionCreate', interactionResponse)
         client.on('messageCreate', onMessage)
     }
 })

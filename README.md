@@ -57,14 +57,22 @@ On Ubuntu, save this to ``/etc/systemd/system/currencybot.service``, then run th
 $ sudo systemctl daemon-reload
 ```
 
-To manage the bot state, run the following
+To manage the bot state, run one of the following
 ```sh
-$ sudo systemctl <start|stop|restart|status|enable|disable> currencybot
+# Start/Stop/Restart the bot
+$ sudo systemctl <start|stop|restart> currencybot
+# Enable/Disable auto start on system boot
+$ sudo systemctl <enable|disable> currencybot
+# Check the status of the bot
+$ sudo systemctl status currencybot
 ```
 
 To check the logs, run one of the following
 ```sh
+# Check the logs from the moment the bot service was created.
+# Note: You can skip to latest by pressing G (capital g).
 $ sudo journalctl -u currencybot
+# Tail the logs, automatically polling for the latest output.
 $ sudo journalctl -u currencybot -f
 ```
 

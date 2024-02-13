@@ -15,3 +15,6 @@ Converts ``<value>`` from the first ``<code>`` currency to the second ``<code>``
 $<code>
 ```
 Converts 100 ``<code>`` to EUR and 100 EUR to ``<code>``.
+
+# License
+Currency Bot is licensed under the license [MIT License](https://github.com/Kirdow/CurrencyBot/blob/master/LICENSE)

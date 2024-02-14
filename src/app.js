@@ -5,9 +5,12 @@ import createLogger from './logger.js'
 
 import SourceCommand from './cmd/source.js'
 import CurrencyCommand from './cmd/currency.js'
+import PingCommand from './cmd/ping.js'
+import {sleep} from './util.js'
 
 const convertRegex = /^(?<num>\-?\d+(\.\d+)?) (?<code>[A-Z]+)(( (in|to|as))? (?<to>[A-Z]+))?$/;
 const schemeRegex = /^\$(?<code>[A-Z]+)$/;
+const schemeRegexInteraction = /^\$?(?<code>[A-Z]+)$/;
 
 async function onMessage(message) {
     if (message.author.bot) {
@@ -45,7 +48,7 @@ async function handleCommand(opts) {
     return false;
 }
 
-async function onConvert({ content, reply, embed, logger }) {
+async function onConvert({ content, reply, interaction, logger }) {
     const groups = content.match(convertRegex)?.groups
     if (!groups) {
         return false;
@@ -77,7 +80,7 @@ async function onConvert({ content, reply, embed, logger }) {
             result = value
         }
 
-        if (embed) {
+        if (interaction) {
             const embeds = [
                 new EmbedBuilder()
                     .setColor(0xA0FF00)
@@ -107,8 +110,8 @@ async function onConvert({ content, reply, embed, logger }) {
     return true
 }
 
-async function onScheme({ content, reply, embed, logger }) {
-    const groups = content.match(schemeRegex)?.groups
+async function onScheme({ content, reply, interaction, logger }) {
+    const groups = content.match(interaction ? schemeRegexInteraction : schemeRegex)?.groups
     if (!groups) {
         return false;
     }
@@ -141,7 +144,7 @@ async function onScheme({ content, reply, embed, logger }) {
         const top = `100 ${code} = ${currToEur} EUR`
         const bottom = `100 EUR = ${eurToCurr} ${code}`
 
-        if (embed) {
+        if (interaction) {
             const embeds = [
                 new EmbedBuilder()
                     .setColor(0xA0FF00)
@@ -254,12 +257,67 @@ async function interactionResponse(interaction) {
             const logger = createLogger(username)
             const silentLog = silent ? ' | silent' : ''
             logger.log(`/currency prompt:${content}${silentLog}`)
-            if (!await handleCommand({ content, reply, embed: true, logger })) {
+            if (!await handleCommand({ content, reply, interaction: true, logger })) {
                 console.warn(`Something went wrong with the request.`)
                 await interaction.editReply({
                     content: `Something went wrong with the request.`
                 })
             }
+        } else if (interaction.commandName === 'ping') {
+            const user = interaction.user
+            let username = `${user.username}`
+            if (user.discriminator !== '0') {
+                username += `#${user.discriminator}`
+            }
+
+            const startTime = performance.now()
+            const msg = await interaction.reply({
+                content: 'Pong!'
+            })
+            const endTime = performance.now()
+            const initialTime = endTime - startTime
+
+            await sleep(1500)
+
+            const samples = 7
+            const skipSamples = samples - 2
+
+            const data = []
+            for (let i = 0; i < samples; i++) {
+                await sleep(500)
+                const iterationStartTime = performance.now()
+                await msg.edit({
+                    content: `Pong${'.'.repeat(i + 1)}!`
+                })
+                const iterationEndTime = performance.now()
+                const iterationTime = iterationEndTime - iterationStartTime
+                data.push(iterationTime)
+            }
+
+            await sleep(500)
+
+            data.sort()
+            let total = 0.0
+            for (let i = 1; i <= skipSamples; i++) {
+                total += data[i]
+            }
+
+            await msg.edit({
+                content: '',
+                embeds: [
+                    new EmbedBuilder()
+                        .setColor(0xAFFF00)
+                        .setTitle("Latency Report")
+                        .addFields(
+                            { name: 'Initial Time :arrow_forward:', value: `**${Math.ceil(initialTime)}**ms` },
+                            { name: 'High :up_arrow:', value: `**${Math.ceil(data[1 + skipSamples])}**ms`, inline: true },
+                            { name: 'Low :down_arrow:', value: `**${Math.ceil(data[0])}**ms`, inline: true },
+                            { name: `Average ${skipSamples} of ${samples} :arrows_counterclockwise:`, value: `**${Math.ceil(total / skipSamples)}**ms` }
+                        )
+                        .setTimestamp(new Date())
+                        .setFooter({ text: cbot.user.username, iconURL: getBotAvatarUrl() })
+                ]
+            })
         }
     } catch (ex) {
         console.error("Interaction failed")
@@ -276,7 +334,8 @@ const cbot = createBot({
     },
     commands: [
         SourceCommand,
-        CurrencyCommand
+        CurrencyCommand,
+        PingCommand
     ],
     eventsCallback: client => {
         client.on('interactionCreate', interactionResponse)

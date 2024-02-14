@@ -2,7 +2,7 @@
   "name": "currencybot",
   "version": "1.0.0",
   "description": "",
-  "main": "app.js",
+  "main": "src/app.js",
   "author": "",
   "license": "MIT",
   "type": "module",

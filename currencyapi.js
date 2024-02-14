@@ -24,35 +24,40 @@ function getDeltaStr(v1, v2) {
     return `${deltaStr} 24h change`
 }
 
-export async function getLatest({ from, to }) {
+export async function getLatest({ from, to, logger }) {
     from = from.toLowerCase()
     to = to.toLowerCase()
     try {
+        logger.log(`Requesting current value from Currency API: {from: ${from}, to: ${to}}`)
         const response = await fetch(`https://cdn.jsdelivr.net/gh/fawazahmed0/currency-api@1/latest/currencies/${from}/${to}.json`)
         const data = await response.json()
         const value = parseFloat(data[to])
         if (isNaN(value)) {
+            logger.warn(`Received no value from Currency API, currency is probably invalid`)
             return null
         }
 
         const date = new Date(data.date)
         date.setDate(date.getDate()-1)
+        logger.log(`Requesting yesterday (${getFormatDate(date)}) value from Currency API`)
         const lastResponse = await fetch(`https://cdn.jsdelivr.net/gh/fawazahmed0/currency-api@1/${getFormatDate(date)}/currencies/${from}/${to}.json`)
         const lastData = await lastResponse.json()
         const lastValue = parseFloat(lastData[to])
         if (isNaN(lastValue)) {
+            logger.warn(`Received no value from Currency API, currency is probably invalid`)
             return null
         }
-        console.log("Result-0", typeof(data), data, data[to])
-        console.log("Result-1", typeof(lastData), lastData, lastData[to])
+
+        logger.log("Result-0", typeof(data), data, data[to])
+        logger.log("Result-1", typeof(lastData), lastData, lastData[to])
 
         return {
             value: data[to],
             delta: getDeltaStr(lastValue, value)
         }
     } catch (ex) {
-        console.error("Failed to fetch API")
-        console.error(ex)
+        logger.error("Failed to fetch API")
+        logger.error(ex)
         return null
     }
 }

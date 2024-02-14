@@ -1,45 +1,12 @@
 import { EmbedBuilder, GatewayIntentBits, Partials } from 'discord.js'
 import { createBot } from './dbot.js'
-import { getLatest } from './currencyapi.js'
+import { getCurrency } from './currency.js'
+import createLogger from './logger.js'
 
 import SourceCommand from './cmd/source.js'
 import CurrencyCommand from './cmd/currency.js'
 
-const cache = {}
-
-function getCacheKey(from, to) {
-    const key = { from, to }
-    return JSON.stringify(key)
-}
-
-async function getCurrency(from, value, to) {
-    const cValue = cache[getCacheKey(from, to)]
-
-    if (cValue && cValue.timeout >= performance.now()) {
-        return {
-            value: cValue.value * value,
-            delta: cValue.delta
-        }
-    }
-
-    const result = await getLatest({ from, to })
-    if (!result) {
-        return null
-    }
-
-    cache[getCacheKey(from, to)] = {
-        value: result.value,
-        delta: result.delta,
-        timeout: performance.now() + 1000 * 3600 * 6
-    }
-
-    return {
-        value: result.value * value,
-        delta: result.delta
-    }
-}
-
-const convertRegex = /^(?<num>\d+(\.\d+)?) (?<code>[A-Z]+)(( (in|to|as))? (?<to>[A-Z]+))?$/;
+const convertRegex = /^(?<num>\-?\d+(\.\d+)?) (?<code>[A-Z]+)(( (in|to|as))? (?<to>[A-Z]+))?$/;
 const schemeRegex = /^\$(?<code>[A-Z]+)$/;
 
 async function onMessage(message) {
@@ -54,14 +21,15 @@ async function onMessage(message) {
         })
     };
 
-    if (await handleCommand({ content: message.content, reply })) {
-        const user = message.author
-        let username = `${user.username}`
-        if (user.discriminator !== '0') {
-            username += `#${user.discriminator}`
-        }
+    const user = message.author
+    let username = `${user.username}`
+    if (user.discriminator !== '0') {
+        username += `#${user.discriminator}`
+    }
 
-        console.log(`message prompt:${message.content} by ${username}`)
+    const logger = createLogger(username)
+    if (await handleCommand({ content: message.content, reply, logger })) {
+        logger.log(`message prompt:${message.content} by ${username}`)
     }
 }
 
@@ -77,7 +45,7 @@ async function handleCommand(opts) {
     return false;
 }
 
-async function onConvert({ content, reply, embed }) {
+async function onConvert({ content, reply, embed, logger }) {
     const groups = content.match(convertRegex)?.groups
     if (!groups) {
         return false;
@@ -94,7 +62,7 @@ async function onConvert({ content, reply, embed }) {
     const to = groups.to || 'EUR'
 
     try {
-        const obj = await getCurrency(curr, val, to)
+        const obj = await getCurrency({ from: curr, value: val, to, logger })
         if (!obj) {
             console.warn("Failed to fetch currency")
             console.warn(val, curr, to)
@@ -139,7 +107,7 @@ async function onConvert({ content, reply, embed }) {
     return true
 }
 
-async function onScheme({ content, reply, embed }) {
+async function onScheme({ content, reply, embed, logger }) {
     const groups = content.match(schemeRegex)?.groups
     if (!groups) {
         return false;
@@ -148,7 +116,7 @@ async function onScheme({ content, reply, embed }) {
     const code = groups.code
 
     try {
-        const obj = await getCurrency(code, 1, 'EUR')
+        const obj = await getCurrency({ from: code, value: 1, to: 'EUR', logger })
         if (!obj) {
             console.warn("Failed to fetch scheme currency")
             console.warn(1, code, 'EUR')
@@ -283,8 +251,10 @@ async function interactionResponse(interaction) {
                 })
             }
 
-            console.log(`/currency prompt:${content} by ${username} | silent: ${silent}`)
-            if (!await handleCommand({ content, reply, embed: true })) {
+            const logger = createLogger(username)
+            const silentLog = silent ? ' | silent' : ''
+            logger.log(`/currency prompt:${content}${silentLog}`)
+            if (!await handleCommand({ content, reply, embed: true, logger })) {
                 console.warn(`Something went wrong with the request.`)
                 await interaction.editReply({
                     content: `Something went wrong with the request.`

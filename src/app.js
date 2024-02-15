@@ -1,12 +1,12 @@
 import { EmbedBuilder, GatewayIntentBits, Partials } from 'discord.js'
 import { createBot } from './dbot.js'
 import { getCurrency } from './currency.js'
+import {sleep} from './util.js'
 import createLogger from './logger.js'
 
 import SourceCommand from './cmd/source.js'
 import CurrencyCommand from './cmd/currency.js'
 import PingCommand from './cmd/ping.js'
-import {sleep} from './util.js'
 
 const convertRegex = /^(?<num>\-?\d+(\.\d+)?) (?<code>[A-Z]+)(( (in|to|as))? (?<to>[A-Z]+))?$/;
 const schemeRegex = /^\$(?<code>[A-Z]+)$/;
@@ -270,6 +270,9 @@ async function interactionResponse(interaction) {
                 username += `#${user.discriminator}`
             }
 
+            const samples = interaction.options.getNumber('samples')
+            const skipSamples = samples - 2
+
             const startTime = performance.now()
             const msg = await interaction.reply({
                 content: 'Pong!'
@@ -278,9 +281,6 @@ async function interactionResponse(interaction) {
             const initialTime = endTime - startTime
 
             await sleep(1500)
-
-            const samples = 7
-            const skipSamples = samples - 2
 
             const data = []
             for (let i = 0; i < samples; i++) {

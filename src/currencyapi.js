@@ -1,27 +1,35 @@
-function getFormatDate(date) {
-    const year = date.getYear() + 1900
-    const month = date.getMonth() + 1
-    const day = date.getDate()
+import { getFormatDate, getDeltaStr } from './util.js'
 
-    const yearStr = year.toString()
-    const monthStr = month.toString().padStart(2, '0')
-    const dayStr = day.toString().padStart(2, '0')
 
-    return `${yearStr}-${monthStr}-${dayStr}`
+async function requestData({ from, to, time }) {
+    const response = await fetch(`https://cdn.jsdelivr.net/gh/fawazahmed0/currency-api@1/${time}/currencies/${from}/${to}.json`)
+    return await response.json()
 }
 
-function getDeltaStr(v1, v2) {
-    if (isNaN(v1) || isNaN(v2)) {
-        return ''
-    }
+export async function getHistory({ from, to, date, logger }) {
+    from = from.toLowerCase()
+    to = to.toLowerCase()
+    const dateStr = getFormatDate(date)
 
-    const delta = (v2 - v1) / v1 * 100
-    let deltaStr = `${delta.toFixed(2)}%`
-    if (delta > 0) {
-        deltaStr = `+${deltaStr}`
-    }
+    try {
+        logger.log(`Requesting history (${dateStr}) value from Currency API: {from: ${from}, to: ${to}}`)
+        const data = await requestData({ from, to, time: dateStr })
+        const value = parseFloat(data[to])
+        if (isNaN(value)) {
+            logger.warn(`Received no value from Currency API, currency is probably invalid`)
+            return null
+        }
 
-    return `${deltaStr} 24h change`
+        logger.log("Result", typeof(data), data, data[to])
+
+        return {
+            value: data[to]
+        }
+    } catch (ex) {
+        logger.error("Failed to fetch API")
+        logger.error(ex)
+        return null
+    }
 }
 
 export async function getLatest({ from, to, logger }) {
@@ -29,8 +37,7 @@ export async function getLatest({ from, to, logger }) {
     to = to.toLowerCase()
     try {
         logger.log(`Requesting current value from Currency API: {from: ${from}, to: ${to}}`)
-        const response = await fetch(`https://cdn.jsdelivr.net/gh/fawazahmed0/currency-api@1/latest/currencies/${from}/${to}.json`)
-        const data = await response.json()
+        const data = await requestData({ from, to, time: 'latest' })
         const value = parseFloat(data[to])
         if (isNaN(value)) {
             logger.warn(`Received no value from Currency API, currency is probably invalid`)
@@ -39,9 +46,9 @@ export async function getLatest({ from, to, logger }) {
 
         const date = new Date(data.date)
         date.setDate(date.getDate()-1)
+
         logger.log(`Requesting yesterday (${getFormatDate(date)}) value from Currency API`)
-        const lastResponse = await fetch(`https://cdn.jsdelivr.net/gh/fawazahmed0/currency-api@1/${getFormatDate(date)}/currencies/${from}/${to}.json`)
-        const lastData = await lastResponse.json()
+        const lastData = await requestData({ from, to, time: getFormatDate(date) })
         const lastValue = parseFloat(lastData[to])
         if (isNaN(lastValue)) {
             logger.warn(`Received no value from Currency API, currency is probably invalid`)

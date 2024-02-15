@@ -1,4 +1,5 @@
-import { getLatest } from './currencyapi.js'
+import { getLatest, getHistory } from './currencyapi.js'
+import { getFormatDate } from './util.js'
 
 // Currency section
 
@@ -22,6 +23,28 @@ export async function getCurrency({ from, value, to, logger }) {
         value: latest.value * value,
         delta: latest.delta
     }
+}
+
+export async function getCurrencyHistory({ from, to, times, logger }) {
+    const result = []
+
+    for (const time of times) {
+        const date = new Date()
+        date.setDate(date.getDate()-time)
+        const history = await getHistory({ from, to, date, logger })
+        logger.log("history rec", history)
+        if (!history) {
+            result.push({
+                value: 0.0
+            })
+        } else {
+            result.push({
+                value: parseFloat(history.value)
+            })
+        }
+    }
+
+    return result
 }
 
 // Cache section

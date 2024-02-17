@@ -1,5 +1,31 @@
 import { getLatest, getHistory } from './currencyapi.js'
-import { getFormatDate } from './util.js'
+import { getCurrencies } from './currencies.js'
+import { getFormatDate, fromUnicodes } from './util.js'
+
+// Display section
+
+export function formCurrency(obj) {
+    if (Array.isArray(obj)) {
+        return formCurrency({ items: obj })
+    }
+
+    let { isPost, prefix, items } = obj
+    const icon = fromUnicodes(...items)
+    prefix ||= ''
+    const fullIcon = `${prefix}${icon}`
+    return {
+        isPost,
+        prefix,
+        icon: fullIcon,
+        format: (value) => {
+            if (isPost) {
+                return `${value}${fullIcon}`
+            } else {
+                return `${fullIcon}${value}`
+            }
+        }
+    }
+}
 
 // Currency section
 

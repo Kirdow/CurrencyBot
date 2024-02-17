@@ -28,3 +28,8 @@ export function getDeltaStr(v1, v2, time) {
 
     return `${deltaStr} ${time} change`
 }
+
+export function fromUnicodes(...items) {
+    return items.map(p => String.fromCharCode(p)).join('')
+}
+

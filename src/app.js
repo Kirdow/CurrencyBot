@@ -1,6 +1,7 @@
 import { EmbedBuilder, GatewayIntentBits, Partials } from 'discord.js'
 import { createBot } from './dbot.js'
 import { getCurrency, getCurrencyHistory } from './currency.js'
+import { getCurrencyIcon } from './currencies.js'
 import {sleep} from './util.js'
 import createLogger from './logger.js'
 
@@ -85,8 +86,8 @@ async function onConvert({ content, reply, interaction, logger }) {
                     .setColor(0xA0FF00)
                     .setTitle(`Conversion for ${curr} to ${to}`)
                     .addFields(
-                        { name: `${curr}`, value: `${val}`, inline: true },
-                        { name: `${to}`, value: `${result}`, inline: true }
+                        { name: `${curr}`, value: getCurrencyIcon(curr).format(val), inline: true },
+                        { name: `${to}`, value: getCurrencyIcon(to).format(result), inline: true }
                     )
                     .setTimestamp(getCurrencyDate())
                     .setFooter({ text: cbot.user.username, iconURL: getBotAvatarUrl() })
@@ -172,8 +173,8 @@ async function onScheme({ content, ref, reply, interaction, logger }) {
                     .setColor(0xA0FF00)
                     .setTitle(`${code} <=> ${ref}`)
                     .addFields(
-                        { name: `100 ${ref}`, value: `${refToCurr} ${code}`, inline: true },
-                        { name: `100 ${code}`, value: `${currToRef} ${ref}`, inline: true },
+                        { name: `100 ${ref}`, value: getCurrencyIcon(code).format(refToCurr), inline: true },
+                        { name: `100 ${code}`, value: getCurrencyIcon(ref).format(currToRef), inline: true },
                         { name: `** **`, value: `**HISTORY**` },
                         { name: '24h', value: getChange(1), inline: true },
                         { name: '1w', value: getChange(2), inline: true },

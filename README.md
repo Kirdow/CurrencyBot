@@ -26,6 +26,8 @@ The source currency is specified with `<currency>` and the reference currency is
 # Supported Messages *(deprecated as of 2024-02-20)*
 These are the supported messages as of 2024-02-13.
 
+***Note:*** *Messages are deprecated as of 2024-02-20. In a later commit, raw messages will be removed from the bot in favour of slash commands.*
+
 ### Convert
 ```
 <value> <code>[[ <in|to|as>] <code>]

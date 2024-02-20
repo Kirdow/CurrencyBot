@@ -1,7 +1,29 @@
 # Currency Bot [![License](https://img.shields.io/github/license/Kirdow/CurrencyBot.svg)](https://github.com/Kirdow/CurrencyBot/blob/master/LICENSE)
 Discord Bot made by Kirdow to convert currencies.
 
-# Supported Messages
+# Slash Commands
+These are the supported slash commands as of 2024-02-20.
+
+### /currency
+This follow the same format as messages seen below.<br>
+However `Convert` and `Scheme` should prefer using `/convert` and `/scheme` commands for better support.
+
+### /convert
+```
+/convert <value> <from> [to]
+```
+Converts between currency `<from>` to currency `[to]` with `<value>` as input value.
+
+### /scheme
+```
+/scheme <currency> [reference]
+```
+Shows the current `100X = Y || 100Y = X` as well as a graph for the past 3 months, 1 months, 1 week and 24 hours with values in between.<br>
+Graph needs to be cached using a channel specified in dotenv (`.env`) prior to delivering the response.
+
+The source currency is specified with `<currency>` and the reference currency is default to EUR unless otherwise specified in `[reference]`.
+
+# Supported Messages *(deprecated as of 2024-02-20)*
 These are the supported messages as of 2024-02-13.
 
 ### Convert
@@ -25,6 +47,7 @@ The file should look like this
 ```
 CTOKEN="<token goes here>"
 CCLIENT_ID="<client id goes here>"
+GRAPH_CACHE_CHANNEL="<cache channel id goes here>"
 ```
 
 ## Running the bot manually

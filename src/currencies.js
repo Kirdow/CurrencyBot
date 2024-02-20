@@ -136,8 +136,14 @@ export function getCurrencyIcon(currency) {
         isPost: true,
         prefix: undefined,
         icon: ` ${currency}`,
-        format: (value) => {
-            return `${value} ${currency}`
+        format: (value, fixed) => {
+            let trimValue = value.toFixed(2)
+            if (typeof fixed === 'number') {
+                trimValue = value.toFixed(fixed)
+            } else if (trimValue.toString() === '0.00') {
+                trimValue = value.toFixed(Math.abs(value) >= 1.0 ? 2 : 8)
+            }
+            return `${trimValue} ${currency}`
         }
     }
 }

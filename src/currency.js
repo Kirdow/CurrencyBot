@@ -17,14 +17,38 @@ export function formCurrency(obj) {
         isPost,
         prefix,
         icon: fullIcon,
-        format: (value) => {
+        format: (value, fixed) => {
+            console.log("Format", value, fixed)
+            let trimValue = value.toFixed(2)
+            if (typeof fixed === 'number') {
+                trimValue = value.toFixed(fixed)
+            } else if (trimValue.toString() === '0.00') {
+                trimValue = value.toFixed(Math.abs(value) >= 1.0 ? 2 : 8)
+            }
+
             if (isPost) {
-                return `${value}${fullIcon}`
+                return `${trimValue}${fullIcon}`
             } else {
-                return `${fullIcon}${value}`
+                return `${fullIcon}${trimValue}`
             }
         }
     }
+}
+
+// Util section
+
+export function getHistoryValues(history) {
+    const values = []
+
+    for (const value of history) {
+        if (Array.isArray(value)) {
+            values.push(getHistoryValues(value))
+        } else {
+            values.push(value.value)
+        }
+    }
+
+    return values
 }
 
 // Currency section
@@ -55,6 +79,15 @@ export async function getCurrencyHistory({ from, to, times, logger }) {
     const result = []
 
     for (const time of times) {
+        if (Array.isArray(time)) {
+            const nestedArray = await getCurrencyHistory({
+                from, to, times: time, logger
+            })
+
+            result.push(nestedArray)
+            continue
+        }
+
         const date = new Date()
         date.setDate(date.getDate()-time)
         const history = await getHistory({ from, to, date, logger })

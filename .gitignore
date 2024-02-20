@@ -21,3 +21,6 @@ package-lock.json
 
 # Tank files
 **.tank.json
+
+# Back-end runtime stored files directory
+files/

@@ -7,10 +7,10 @@ const graphPath = './files/graph/';
 
 await fs.mkdir(graphPath, { recursive: true });
 
-export async function generateAndCacheGraph({ values, bot, name, logger, icon }) {
+export async function generateAndCacheGraph({ entries, bot, name, logger }) {
     try {
         logger.log(`Generating graph image ${name}`)
-        const path = await generateGraphImage({ icon, values, name, logger })
+        const path = await generateGraphImage({ entries, name, logger })
         if (!path) {
             logger.error(`Failed to generate graph`)
             return null
@@ -79,7 +79,67 @@ function getBounds(values) {
     return [Math.min(...allValues), Math.max(...allValues)]
 }
 
-export async function generateGraphImage({ icon, values, name, logger }) {
+function getBoundsAll(entries) {
+    let [min, max] = getBounds(entries[0].values)
+
+    for (let i = 1; i < entries.length; i++) {
+        const [minValue, maxValue] = getBounds(entries[i].values)
+        if (minValue < min) min = minValue
+        if (maxValue > max) max = maxValue
+    }
+
+    return [min, max]
+}
+
+function createColor(r, g, b) {
+    return {
+        r, g, b,
+        opaque: () => `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`,
+        alpha: (v) => `rgba(${r}, ${g}, ${b}, ${(v ?? 0.4)})`
+    }
+}
+
+// Colors based on the first 6 colors of `tab 10` of a graph palette online
+// Source: https://repec.sowi.unibe.ch/stata/palettes/colors/tab10q1.svg
+const colors = [
+    createColor(78, 121, 167),
+    createColor(242, 142, 43),
+    createColor(225, 87, 89),
+    createColor(118, 183, 178),
+    createColor(89, 161, 79),
+    createColor(237, 201, 72)
+]
+
+const maxColors = colors.length
+
+export function generateCurrencyEntry({ code, icon, values, index }) {
+    const color = index < maxColors ? colors[index] : null
+    if (!color) {
+        return null
+    }
+
+    return {
+        code,
+        icon,
+        values,
+        index,
+        color,
+        stroke: () => color.opaque(),
+        fill: () => color.alpha()
+    }
+}
+
+function splitValues(entry) {
+    const raw = entry.values.filter(p => typeof p === 'number')
+    const block = entry.values.filter(Array.isArray)
+
+    raw.shift()
+    raw.reverse()
+
+    return [raw, block]
+}
+
+export async function generateGraphImage({ entries, name, logger }) {
     // A lot of values in this function is hardcoded.
     // For initial implementation I only care about it working.
     // I will fix this in a later commit.
@@ -91,22 +151,26 @@ export async function generateGraphImage({ icon, values, name, logger }) {
     const canvas = createCanvas(width, height)
     const ctx = canvas.getContext('2d')
 
-    const rawValues = values.filter(p => typeof p === 'number')
-    const blockValues = values.filter(Array.isArray)
-
     ctx.fillStyle = 'rgba(0, 0, 0, 0)'
     ctx.fillRect(0, 0, width, height)
 
-    const [minValue, maxValue] = getBounds(values)
-
-    const minIcon = icon.format(minValue, 4)
-    const maxIcon = icon.format(maxValue, 4)
+    const [minValue, maxValue] = getBoundsAll(entries)
 
     const topMargin = height * 0.1
     const bottomMargin = height * 0.25
 
-    const leftMargin = width * 0.15
-    const rightMargin = width * 0.05
+    let minSize = 0.0
+    for (const entry of entries) {
+        const [min, max] = getBounds(entry.values)
+        for (const text of [entry.icon.format(min * 100, 4), entry.icon.format(max * 100, 4)]) {
+            ctx.font = 'bold 15px Arial'
+            const size = ctx.measureText(text).width
+            if (size > minSize) minSize = size
+        }
+    }
+
+    const leftMargin = Math.ceil(Math.max(width * 0.15, minSize + 10))
+    const rightMargin = width * 0.125
     const graphWidth = width - leftMargin - rightMargin
 
     const normalize = (value) => {
@@ -129,6 +193,7 @@ export async function generateGraphImage({ icon, values, name, logger }) {
         ctx.fillText(label, x - 6, height - 8)
 
         if (index < 3) {
+            const blockValues = splitValues(entries[0])[1]
             const block = blockValues[index]
             const delta = pointSpacing / (block.length + 1)
             for (let j = 1; j <= block.length; j++) {
@@ -145,42 +210,75 @@ export async function generateGraphImage({ icon, values, name, logger }) {
 
 
     logger.log("Generating graph")
-    ctx.beginPath()
-    ctx.strokeStyle = '#00FFFF'
-    ctx.lineWidth = 2
-    for (let i = 0; i < 4; i++) {
-        { // Using indentation so I can reuse variable names.
-          // Dumb I know, but hey, deal with it.
-            const value = rawValues[i]
-            const x = leftMargin + i * pointSpacing
-            const y = height - normalize(value)
-            if (i === 0) ctx.moveTo(x, y)
-            else ctx.lineTo(x, y)
+    for (const entry of entries) {
+        const [min, max] = getBounds(entry.values)
+        const normalizeInner = (value) => {
+            return ((value - min) / (max - min)) * (height - bottomMargin - topMargin) + bottomMargin
         }
 
-        if (i == 3) break
-        console.log(blockValues)
-        const sub = blockValues[i]
-        for (let j = 0; j < sub.length; ++j) {
-            const value = sub[j]
-            const x = leftMargin + i * pointSpacing + (j + 1) * (pointSpacing / (sub.length + 1))
-            const y = height - normalize(value)
-            ctx.lineTo(x, y)
+        const minIcon = entry.icon.format(minValue, 4)
+        const maxIcon = entry.icon.format(maxValue, 4)
+
+        ctx.beginPath()
+        ctx.strokeStyle = entry.stroke()
+        ctx.lineWidth = 2
+        const [rawValues, blockValues] = splitValues(entry)
+        for (let i = 0; i < 4; i++) {
+            { // Using indentation so I can reuse variable names.
+            // Dumb I know, but hey, deal with it.
+                const value = rawValues[i]
+                const x = leftMargin + i * pointSpacing
+                const y = height - normalizeInner(value)
+                if (i === 0) ctx.moveTo(x, y)
+                else ctx.lineTo(x, y)
+            }
+
+            if (i == 3) break
+            const sub = blockValues[i]
+            for (let j = 0; j < sub.length; ++j) {
+                const value = sub[j]
+                const x = leftMargin + i * pointSpacing + (j + 1) * (pointSpacing / (sub.length + 1))
+                const y = height - normalizeInner(value)
+                ctx.lineTo(x, y)
+            }
         }
+        ctx.stroke()
+
+        if (entries.length > 1) continue
+
+        ctx.lineTo(leftMargin + 3 * pointSpacing, height - 24)
+        ctx.lineTo(leftMargin, height - 24)
+        ctx.closePath()
+        ctx.fillStyle = entry.fill()
+        ctx.fill()
     }
-    ctx.stroke()
-
-    ctx.lineTo(leftMargin + 3 * pointSpacing, height - 24)
-    ctx.lineTo(leftMargin, height - 24)
-    ctx.closePath()
-    ctx.fillStyle = 'rgba(0, 255, 255, 0.4)'
-    ctx.fill()
 
     logger.log("Writing high and low")
+    for (let i = 0; i < entries.length; i++) {
+        const entry = entries[i]
+        const [min, max] = getBounds(entry.values)
+
+        ctx.fillStyle = entry.stroke()
+        ctx.font = 'bold 15px Arial'
+
+        ctx.fillText(`${entry.icon.format(max * 100, 4)}`, 2, topMargin + (i + 0.5) * 15 + 2)
+        ctx.fillText(`${entry.icon.format(min * 100, 4)}`, 2, height - bottomMargin + (i + 0.5 - entries.length) * 15 + 12)
+
+        ctx.fillText(`${entry.code}`, leftMargin + 3 * pointSpacing + 10, topMargin + (i) * 32 + 14)
+        ctx.fillText(`${entry.icon.format(entry.values[0] * 100, 2)}`, leftMargin + 3 * pointSpacing + 12, topMargin + (i + 0.5) * 32 + 14)
+    }
     ctx.fillStyle = 'white'
+    ctx.font = 'bold 15px Arial'
+
+    ctx.fillText('Max', 2, topMargin - 8)
+    ctx.fillRect(2, topMargin - 7, ctx.measureText('Max').width, 2)
+
+    ctx.fillText('Min', 2, height - bottomMargin - entries.length * 15 + 2)
+    ctx.fillRect(2, height - bottomMargin - entries.length * 15 + 3, ctx.measureText('Min').width, 2)
+
     ctx.font = 'bold 14px Arial'
-    ctx.fillText(`${maxIcon}`, 5, height - normalize(maxValue) + 7)
-    ctx.fillText(`${minIcon}`, 5, height - normalize(minValue) + 7)
+    ctx.fillText('Legend', leftMargin + 3 * pointSpacing + 10, topMargin - 5)
+    ctx.fillRect(leftMargin + 3 * pointSpacing + 10, topMargin - 4, ctx.measureText('Legend').width, 2)
 
     logger.log("Writing image to disk")
     const filePath = `${graphPath}${name}.png`

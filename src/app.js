@@ -2,12 +2,11 @@ import { EmbedBuilder, GatewayIntentBits, Partials } from 'discord.js'
 import { createBot } from './dbot.js'
 import { getCurrency, getCurrencyHistory, getHistoryValues } from './currency.js'
 import { getCurrencyIcon } from './currencies.js'
-import { generateAndCacheGraph } from './graph.js'
+import { generateAndCacheGraph, generateCurrencyEntry } from './graph.js'
 import {sleep} from './util.js'
 import createLogger from './logger.js'
 
 import SourceCommand from './cmd/source.js'
-import CurrencyCommand from './cmd/currency.js'
 import ConvertCommand from './cmd/convert.js'
 import SchemeCommand from './cmd/scheme.js'
 import PingCommand from './cmd/ping.js'
@@ -16,57 +15,16 @@ const convertRegex = /^(?<num>\-?\d+(\.\d+)?) (?<code>[A-Z]+)(( (in|to|as))? (?<
 const schemeRegex = /^\$(?<code>[A-Z]+)$/;
 const schemeRegexInteraction = /^\$?(?<code>[A-Z]+)$/;
 
-async function onMessage(message) {
-    if (message.author.bot) {
-        return;
-    }
-
-    const reply = async (data) => {
-        return await message.channel.send({
-            ...data,
-            allowedMentions: { repliedUser: false }
-        })
-    };
-
-    const user = message.author
-    let username = `${user.username}`
-    if (user.discriminator !== '0') {
-        username += `#${user.discriminator}`
-    }
-
-    const logger = createLogger(username)
-    if (await handleCommand({ username, content: message.content, reply, logger })) {
-        logger.log(`message prompt:${message.content} by ${username}`)
-    }
-}
-
-async function handleCommand(opts) {
-    if (await onConvert(opts)) {
-        return true;
-    }
-
-    if (await onScheme(opts)) {
-        return true;
-    }
-
-    return false;
-}
-
-async function onConvert({ content, reply, interaction, logger }) {
-    const groups = content.match(convertRegex)?.groups
-    if (!groups) {
-        return false;
-    }
-
-    const val = parseFloat(groups.num)
+async function onConvert({ content, data, reply, interaction, logger }) {
+    const val = parseFloat(data.value)
     if (isNaN(val)) {
         logger.warn("Failed to fetch float from currency num")
-        logger.warn(groups.num)
+        logger.warn(data.value)
         return true;
     }
 
-    const curr = groups.code
-    const to = groups.to || 'EUR'
+    const curr = data.from
+    const to = data.to || 'EUR'
 
     try {
         const obj = await getCurrency({ from: curr, value: val, to, logger })
@@ -79,30 +37,23 @@ async function onConvert({ content, reply, interaction, logger }) {
         const { value, delta } = obj
 
         logger.log(`Currency convert for ${val} ${curr}: ${value} ${to}`)
-        const result = value.toFixed(Math.abs(value) >= 1.0 ? 2 : 8)
 
-        if (interaction) {
-            const embeds = [
-                new EmbedBuilder()
-                    .setColor(0xA0FF00)
-                    .setTitle(`Conversion for ${curr} to ${to}`)
-                    .addFields(
-                        { name: `${curr}`, value: getCurrencyIcon(curr).format(val), inline: true },
-                        { name: `${to}`, value: getCurrencyIcon(to).format(result), inline: true }
-                    )
-                    .setTimestamp(getCurrencyDate())
-                    .setFooter({ text: cbot.user.username, iconURL: getBotAvatarUrl() })
-            ]
+        const embeds = [
+            new EmbedBuilder()
+                .setColor(0xA0FF00)
+                .setTitle(`Conversion for ${curr} to ${to}`)
+                .addFields(
+                    { name: `${curr}`, value: getCurrencyIcon(curr).format(val), inline: true },
+                    { name: `${to}`, value: getCurrencyIcon(to).format(value), inline: true }
+                )
+                .setTimestamp(getCurrencyDate())
+                .setFooter({ text: cbot.user.username, iconURL: getBotAvatarUrl() })
+        ]
 
-            await reply({
-                content: '',
-                embeds
-            })
-        } else {
-            await reply({
-                content: `${result} ${to} (${delta})`
-            })
-        }
+        await reply({
+            content: '',
+            embeds
+        })
     } catch (ex) {
         logger.error("Failed to fetch currency")
         logger.error(ex)
@@ -111,16 +62,18 @@ async function onConvert({ content, reply, interaction, logger }) {
     return true
 }
 
-async function onScheme({ username, content, ref, reply, interaction, logger }) {
-    const groups = content.match(interaction ? schemeRegexInteraction : schemeRegex)?.groups
-    if (!groups) {
-        return false;
+async function onScheme({ username, data, reply, logger }) {
+    let code = data.currency
+    const currencies = code.split(", ")
+    if (currencies.length > 1) {
+        code = currencies[0]
+        logger.log("Currencies", currencies)
     }
 
-    const code = groups.code
-    ref ||= 'EUR'
+    const ref = data.reference || 'EUR'
 
     try {
+        const startTime = performance.now() / 1000
         const obj = await getCurrency({ from: code, value: 1, to: ref, logger })
         if (!obj) {
             logger.warn("Failed to fetch scheme currency")
@@ -139,24 +92,16 @@ async function onScheme({ username, content, ref, reply, interaction, logger }) 
         const top = `100 ${code} = ${getCurrencyIcon(ref).format(currToRef)}`
         const bottom = `100 ${ref} = ${getCurrencyIcon(code).format(refToCurr)}`
 
-        const history = await getCurrencyHistory({
-            from: code, to: ref,
-            times: [
-                0, 1, 7, 30, 90,
-                [75, 60, 45],
-                [24, 18, 12],
-                [6, 5, 4, 3, 2, 1]
-            ],
-            logger
-        })
-
         const historyStr = [
             null, '24h', '1w', '1m', '3m'
         ]
 
-        const getChange = (id) => {
-            const v1 = history[id].value || 0.0
-            const v2 = history[0].value || 0.0
+        let history = null
+
+        const getChange = (id, model) => {
+            model ??= history
+            const v1 = model[id].value || 0.0
+            const v2 = model[0].value || 0.0
 
             const delta = (v2 - v1) / v1 * 100
             let deltaStr = `${delta.toFixed(2)}%`
@@ -168,46 +113,112 @@ async function onScheme({ username, content, ref, reply, interaction, logger }) 
             return deltaStr
         };
 
-        if (interaction) {
-            const values = getHistoryValues(history)
-            logger.log("Generating graph for onScheme")
-            const path = await generateAndCacheGraph({
-                icon: getCurrencyIcon(ref),
-                values,
-                bot: cbot,
-                name: `graph_${username.replace('.','')}`,
+        const histories = []
+        const entries = []
+        for (let currencyIndex = 0; currencyIndex < currencies.length; currencyIndex++) {
+            const currencyHistory = await getCurrencyHistory({
+                from: currencies[currencyIndex],
+                to: ref,
+                times: [
+                    0, 1, 7, 30, 90,
+                    [80, 70, 60, 50, 40],
+                    [26, 22, 18, 14, 10],
+                    [6,  5,  4,  3,  2 ]
+                ],
                 logger
             })
 
-            logger.log("Creating embed")
-            const embeds = [
-                new EmbedBuilder()
-                    .setColor(0xA0FF00)
-                    .setTitle(`${code} <=> ${ref}`)
-                    .setImage(path)
-                    .addFields(
-                        { name: `100 ${ref}`, value: getCurrencyIcon(code).format(refToCurr), inline: true },
-                        { name: `100 ${code}`, value: getCurrencyIcon(ref).format(currToRef), inline: true },
-                        { name: `** **`, value: `**HISTORY**` },
-                        { name: '24h', value: getChange(1), inline: true },
-                        { name: '1w', value: getChange(2), inline: true },
-                        { name: '1m', value: getChange(3), inline: true },
-                        { name: '3m', value: getChange(4), inline: true }
-                    )
-                    .setTimestamp(getCurrencyDate())
-                    .setFooter({ text: cbot.user.username, iconURL: getBotAvatarUrl() })
-            ]
+            if (!currencyHistory) continue
 
-            logger.log("Sending embed")
-            await reply({
-                content: '',
-                embeds
-            })
-        } else {
-            await reply({
-                content: `${top}\n${bottom}`
-            })
+            histories.push(currencyHistory)
+            if (!history) history = currencyHistory
+
+            const values = getHistoryValues(currencyHistory)
+            const entry = generateCurrencyEntry({ code: currencies[currencyIndex], icon: getCurrencyIcon(ref), values, index: entries.length })
+            if (!entry) break
+
+            entries.push(entry)
         }
+
+        if (entries.length === 0) {
+            await reply({
+                content: 'Failed to fetch currencies',
+                embeds: []
+            })
+
+            return
+        }
+
+        const values = getHistoryValues(history)
+        logger.log("Generating graph for onScheme")
+        const path = await generateAndCacheGraph({
+            entries,
+            bot: cbot,
+            name: `graph_${username.replace('.','')}`,
+            logger
+        })
+
+        const codes = []
+        const topFields = []
+        const historyFields = []
+        if (currencies.length === 1) {
+            codes.push(code)
+            topFields.push(
+                { name: `100 ${ref}`, value: getCurrencyIcon(code).format(refToCurr), inline: true },
+                { name: `100 ${code}`, value: getCurrencyIcon(ref).format(currToRef), inline: true }
+            )
+
+            historyFields.push(
+                { name: '24h', value: getChange(1), inline: true },
+                { name: '1w', value: getChange(2), inline: true },
+                { name: '1m', value: getChange(3), inline: true },
+                { name: '3m', value: getChange(4), inline: true }
+            )
+        } else {
+            for (let i = 0; i < entries.length; i++) {
+                const entry = entries[i]
+                const entryObj = await getCurrency({ from: entry.code, value: 1, to: ref, logger })
+                if (!obj) {
+                    logger.warn("Failed to fetch scheme currency")
+                    logger.warn(1, entry.code, ref)
+                    return true;
+                }
+
+                const codeToRef = entryObj.value * 100
+
+                codes.push(entry.code)
+                topFields.push({ name: `100 ${entry.code}`, value: getCurrencyIcon(ref).format(codeToRef), inline: true })
+
+                historyFields.push(
+                    { name: `24h ${entry.code}`, value: getChange(1, histories[i]), inline: true }
+                )
+            }
+
+        }
+
+        const endTime = performance.now() / 1000
+        const elapsedTime = (endTime - startTime).toFixed(2)
+        logger.log("Creating embed")
+        const embeds = [
+            new EmbedBuilder()
+                .setColor(0xA0FF00)
+                .setTitle(`${codes.join(", ")} <=> ${ref}`)
+                .setDescription(`*Generated in ${elapsedTime}s*`)
+                .setImage(path)
+                .addFields(
+                    ...topFields,
+                    { name: `** **`, value: `**HISTORY**` },
+                    ...historyFields
+                )
+                .setTimestamp(getCurrencyDate())
+                .setFooter({ text: cbot.user.username, iconURL: getBotAvatarUrl() })
+        ]
+
+        logger.log("Sending embed")
+        await reply({
+            content: '',
+            embeds
+        })
     } catch (ex) {
         logger.error("Failed to fetch scheme currency")
         logger.error(ex)
@@ -261,51 +272,6 @@ async function interactionResponse(interaction) {
 
             console.log(`/source by ${username}`)
             await interaction.reply(messageContent)
-        } else if (interaction.commandName === 'currency') {
-            const user = interaction.user
-            let username = `${user.username}`
-            if (user.discriminator !== '0') {
-                username += `#${user.discriminator}`
-            }
-
-            let content = interaction.options.getString('prompt')
-            if (!content) {
-                console.log(`/currency by ${username} | No prompt specified`)
-                await interaction.reply({
-                    content: '# Usage\nAll of these require the `prompt` option for `/currency`\n### Conversion Prompt\n```\n<decimal> <from>\n```\nor\n```\n<decimal> <from> <to>\n```\n### Scheme Prompt\n```\n$<code>\n```',
-                    ephemeral: true
-                })
-                return;
-            }
-            const reply = async (data) => {
-                return await interaction.editReply({
-                    ...data
-                })
-            }
-
-            let silent = false
-            if (content.startsWith('@silent ')) {
-                await interaction.reply({
-                    content: `Processing...`,
-                    ephemeral: true
-                })
-                content = content.substr(8)
-                silent = true
-            } else {
-                await interaction.reply({
-                    content: `Processing...`
-                })
-            }
-
-            const logger = createLogger(username)
-            const silentLog = silent ? ' | silent' : ''
-            logger.log(`/currency prompt:${content}${silentLog}`)
-            if (!await handleCommand({ username, content, reply, interaction: true, logger })) {
-                console.warn(`Something went wrong with the request.`)
-                await interaction.editReply({
-                    content: `Something went wrong with the request.`
-                })
-            }
         } else if (interaction.commandName === 'ping') {
             const user = interaction.user
             let username = `${user.username}`
@@ -384,7 +350,7 @@ async function interactionResponse(interaction) {
 
             const logger = createLogger(username)
             logger.log(`/convert value:${value} from:${from} to:${to}`)
-            if (!await handleCommand({ username, content: `${value} ${from} ${to}`, reply, interaction: true, logger })) {
+            if (!await onConvert({ username, data: { value, from, to }, reply, logger })) {
                 logger.warn(`Something went wrong with the request.`)
                 await interaction.editReply({
                     content: `Something went wrong with the request.`
@@ -412,7 +378,7 @@ async function interactionResponse(interaction) {
 
             const logger = createLogger(username)
             logger.log(`/scheme currency:${currency} reference:${reference}`)
-            if (!await handleCommand({ username, content: `$${currency}`, ref: reference, reply, interaction: true, logger })) {
+            if (!await onScheme({ username, data: { currency, reference }, reply, logger })) {
                 logger.warn(`Something went wrong with the request.`)
                 await interaction.editReply({
                     content: `Something went wrong with the request.`
@@ -434,13 +400,11 @@ const cbot = createBot({
     },
     commands: [
         SourceCommand,
-        CurrencyCommand,
         ConvertCommand,
         SchemeCommand,
         PingCommand
     ],
     eventsCallback: client => {
         client.on('interactionCreate', interactionResponse)
-        client.on('messageCreate', onMessage)
     }
 })

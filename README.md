@@ -2,11 +2,7 @@
 Discord Bot made by Kirdow to convert currencies.
 
 # Slash Commands
-These are the supported slash commands as of 2024-02-20.
-
-### /currency
-This follow the same format as messages seen below.<br>
-However `Convert` and `Scheme` should prefer using `/convert` and `/scheme` commands for better support.
+These are the supported slash commands as of 2024-02-22.
 
 ### /convert
 ```
@@ -23,22 +19,15 @@ Graph needs to be cached using a channel specified in dotenv (`.env`) prior to d
 
 The source currency is specified with `<currency>` and the reference currency is default to EUR unless otherwise specified in `[reference]`.
 
-# Supported Messages *(deprecated as of 2024-02-20)*
-These are the supported messages as of 2024-02-13.
-
-***Note:*** *Messages are deprecated as of 2024-02-20. In a later commit, raw messages will be removed from the bot in favour of slash commands.*
-
-### Convert
+The source currency can also be a list of up to 6 currencies. This is done by a comma separated list, using a comma and a space.<br>
+For example, the following will work:
 ```
-<value> <code>[[ <in|to|as>] <code>]
+USD, GBP, EUR
 ```
-Converts ``<value>`` from the first ``<code>`` currency to the second ``<code>`` currency. If the second ``<code>`` is omitted it defaults to EUR.
-
-### Scheme
+But the following will not work:
 ```
-$<code>
+USD,GBP,EUR
 ```
-Converts 100 ``<code>`` to EUR and 100 EUR to ``<code>``.
 
 # How do I run this?
 First off, make sure you got a discord bot on your [Discord Dashboard](https://discord.com/developers/applications). You will need the Application/Client ID found under General Information as well as your Token found under Bot section.

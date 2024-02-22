@@ -12,15 +12,12 @@ export async function getHistory({ from, to, date, logger }) {
     const dateStr = getFormatDate(date)
 
     try {
-        logger.log(`Requesting history (${dateStr}) value from Currency API: {from: ${from}, to: ${to}}`)
         const data = await requestData({ from, to, time: dateStr })
         const value = parseFloat(data[to])
         if (isNaN(value)) {
             logger.warn(`Received no value from Currency API, currency is probably invalid`)
             return null
         }
-
-        logger.log("Result", typeof(data), data, data[to])
 
         return {
             value: data[to]

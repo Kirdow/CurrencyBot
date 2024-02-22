@@ -4,9 +4,9 @@ import { getFormatDate, fromUnicodes } from './util.js'
 
 // Display section
 
-export function formCurrency(obj) {
+export function formCurrency(code, obj) {
     if (Array.isArray(obj)) {
-        return formCurrency({ items: obj })
+        return formCurrency(code, { items: obj })
     }
 
     let { isPost, prefix, items } = obj
@@ -14,11 +14,11 @@ export function formCurrency(obj) {
     prefix ||= ''
     const fullIcon = `${prefix}${icon}`
     return {
+        code,
         isPost,
         prefix,
         icon: fullIcon,
         format: (value, fixed) => {
-            console.log("Format", value, fixed)
             let trimValue = value.toFixed(2)
             if (typeof fixed === 'number') {
                 trimValue = value.toFixed(fixed)
@@ -91,11 +91,9 @@ export async function getCurrencyHistory({ from, to, times, logger }) {
         const date = new Date()
         date.setDate(date.getDate()-time)
         const history = await getHistory({ from, to, date, logger })
-        logger.log("history rec", history)
         if (!history) {
-            result.push({
-                value: 0.0
-            })
+            logger.warn(`Invalid currency; from:${from}, to:${to}`)
+            return null
         } else {
             result.push({
                 value: parseFloat(history.value)
